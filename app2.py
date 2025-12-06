@@ -18,7 +18,7 @@ balance_sheet_df = pd.read_csv("balance_sheet_df.csv")
 
 # ---------------------- 定义交互式图表函数 ----------------------
 def business_unit_revenue_fig():
-    """1. 业务单元收入（堆叠面积图）"""
+    """1. 业务单元收入（堆叠面积图）""" #trend
     fig = px.area(
         revenue_df, x="Year", y=["Business 1", "Business 2", "Business 3"],
         title="Business Unit Revenue",
@@ -26,11 +26,12 @@ def business_unit_revenue_fig():
         hover_data={"value": ":,.0f"},
         color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c"]
     )
+    #鼠标移动-交互
     fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
     return fig
 
 def profit_margin_fig():
-    """2. 利润率（双轴图：柱状图+线图）"""
+    """2. 利润率（双y轴图：柱状图+线图）"""
     fig = go.Figure()
     # 利润金额（柱状图）
     fig.add_trace(go.Bar(
