@@ -1,36 +1,52 @@
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output, callback  # 保持与你之前版本一致的导入
+from dash import Dash, dcc, html, Input, Output, callback
 
-# ---------------------- 初始化应用（与你原始版本保持一致，确保WSGI兼容） ----------------------
+# 初始化应用
 app = Dash(__name__)
-server = app.server  # 维持WSGI调用的兼容性
+server = app.server
 
-# ---------------------- 读取数据（路径与你原始dashboard一致，确保能找到CSV） ----------------------
-# 假设你的CSV文件与app.py在同一目录，与你之前的版本路径相同
-revenue_df = pd.read_csv("revenue_df.csv")
-cogs_df = pd.read_csv("cogs_df.csv")
-profit_df = pd.read_csv("profit_df.csv")
-expenses_df = pd.read_csv("expenses_df.csv")
-budget_df = pd.read_csv("budget_df.csv")
-balance_sheet_df = pd.read_csv("balance_sheet_df.csv")
+# ---------------------- 读取数据（增加容错处理） ----------------------
+# 确保CSV文件与app.py在同一目录，且列名正确（根据你的原始数据调整）
+try:
+    revenue_df = pd.read_csv("revenue_df.csv")
+    cogs_df = pd.read_csv("cogs_df.csv")
+    profit_df = pd.read_csv("profit_df.csv")
+    expenses_df = pd.read_csv("expenses_df.csv")
+    budget_df = pd.read_csv("budget_df.csv")
+    # 打印列名，帮助确认数据结构（部署时可删除）
+    print("Revenue columns:", revenue_df.columns.tolist())
+except Exception as e:
+    print("数据读取错误：", e)
+    # 若读取失败，创建示例数据避免崩溃（仅用于测试）
+    revenue_df = pd.DataFrame({
+        "Year": [2020, 2021, 2022, 2023, 2024],
+        "Business 1": [100, 200, 300, 400, 500],
+        "Business 2": [150, 250, 350, 450, 550],
+        "Business 3": [200, 300, 400, 500, 600],
+        "Consolidated": [450, 750, 1050, 1350, 1650]
+    })
+    cogs_df = pd.DataFrame({"Year": [2020,2021,2022,2023,2024], "COGS": [200, 300, 400, 500, 600]})
+    profit_df = pd.DataFrame({"Year": [2020,2021,2022,2023,2024], "Profit $": [250, 450, 650, 850, 1050], "Profit %": [55, 60, 62, 64, 65]})
+    expenses_df = pd.DataFrame({"Year": [2020,2021,2022,2023,2024], "Salaries": [100,120,140,160,180], "Rent": [50,60,70,80,90], "D&A": [30,40,50,60,70], "Interest": [20,30,40,50,60], "Total": [200,250,300,350,400]})
+    budget_df = pd.DataFrame({"Year": [2020,2021,2022,2023,2024], "Revenue": [400,700,1000,1300,1600], "COGS": [180,280,380,480,580], "Expenses": [180,230,280,330,380]})
 
-# ---------------------- 应用布局（简化但保持与你原始dashboard的结构兼容） ----------------------
+# ---------------------- 应用布局 ----------------------
 app.layout = html.Div([
-    html.H1("Financial Analytics Dashboard", style={"textAlign": "center", "margin": "20px 0"}),
+    html.H1("Financial Analytics Dashboard", style={"textAlign": "center"}),
     
-    # 筛选器（保留简单交互，不引入复杂功能）
+    # 筛选器
     html.Div([
         html.Div([
             html.Label("Select Year:"),
             dcc.Dropdown(
                 id="year-filter",
                 options=[{"label": str(y), "value": y} for y in revenue_df["Year"].unique()],
-                value=revenue_df["Year"].max(),  # 默认最新年份
+                value=revenue_df["Year"].max(),
                 style={"width": "200px"}
             )
-        ], style={"display": "inline-block", "marginRight": "30px", "marginLeft": "40px"}),
+        ], style={"display": "inline-block", "margin": "0 20px"}),
         
         html.Div([
             html.Label("Business Unit:"),
@@ -41,31 +57,20 @@ app.layout = html.Div([
                 style={"width": "200px"}
             )
         ], style={"display": "inline-block"})
-    ], style={"margin": "20px 0"}),
+    ], style={"textAlign": "center", "margin": "20px 0"}),
     
-    # 图表区域（与你原始dashboard的布局逻辑一致）
+    # 图表区域
     html.Div([
-        # 第一行
-        html.Div([
-            html.Div([dcc.Graph(id="revenue-trend")], style={"width": "50%", "display": "inline-block"}),
-            html.Div([dcc.Graph(id="profit-margin")], style={"width": "50%", "display": "inline-block"})
-        ]),
-        
-        # 第二行
-        html.Div([
-            html.Div([dcc.Graph(id="revenue-dist")], style={"width": "50%", "display": "inline-block"}),
-            html.Div([dcc.Graph(id="expenses-chart")], style={"width": "50%", "display": "inline-block"})
-        ]),
-        
-        # 第三行
-        html.Div([
-            html.Div([dcc.Graph(id="budget-vs-actual")], style={"width": "50%", "display": "inline-block"}),
-            html.Div([dcc.Graph(id="cagr-radar")], style={"width": "50%", "display": "inline-block"})
-        ])
+        html.Div([dcc.Graph(id="revenue-trend")], style={"width": "50%", "display": "inline-block"}),
+        html.Div([dcc.Graph(id="profit-margin")], style={"width": "50%", "display": "inline-block"}),
+        html.Div([dcc.Graph(id="revenue-dist")], style={"width": "50%", "display": "inline-block"}),
+        html.Div([dcc.Graph(id="expenses-chart")], style={"width": "50%", "display": "inline-block"}),
+        html.Div([dcc.Graph(id="budget-vs-actual")], style={"width": "50%", "display": "inline-block"}),
+        html.Div([dcc.Graph(id="cagr-radar")], style={"width": "50%", "display": "inline-block"})
     ])
 ])
 
-# ---------------------- 回调函数（修复核心错误，保持返回格式与原始版本兼容） ----------------------
+# ---------------------- 回调函数（增加数据校验） ----------------------
 @callback(
     [Output("revenue-trend", "figure"),
      Output("profit-margin", "figure"),
@@ -77,14 +82,24 @@ app.layout = html.Div([
      Input("bu-filter", "value")]
 )
 def update_charts(selected_year, selected_bu):
-    # 1. 收入趋势图（修复数据筛选逻辑）
+    # 校验选中年份是否存在
+    if selected_year not in revenue_df["Year"].values:
+        empty_fig = go.Figure().update_layout(title="无数据：年份不存在")
+        return [empty_fig]*6  # 所有图表返回空提示
+    
+    # 1. 收入趋势图
     if selected_bu != "All":
-        rev_fig = px.line(
-            revenue_df, x="Year", y=selected_bu,
-            title=f"{selected_bu} Revenue Trend",
-            labels={selected_bu: "Revenue ($)"},
-            template="plotly_white"
-        )
+        # 校验业务单元列是否存在
+        if selected_bu not in revenue_df.columns:
+            rev_fig = go.Figure().update_layout(title=f"无数据：{selected_bu}不存在")
+        else:
+            rev_fig = px.line(
+                revenue_df, x="Year", y=selected_bu,
+                title=f"{selected_bu} Revenue Trend",
+                labels={selected_bu: "Revenue ($)"},
+                template="plotly_white"
+            )
+            rev_fig.update_yaxes(tickprefix="$", tickformat=",")
     else:
         rev_fig = px.line(
             revenue_df, x="Year", y=["Business 1", "Business 2", "Business 3"],
@@ -92,23 +107,22 @@ def update_charts(selected_year, selected_bu):
             labels={"value": "Revenue ($)", "variable": "Unit"},
             template="plotly_white"
         )
-    rev_fig.update_yaxes(tickprefix="$", tickformat=",")  # 保持与你原始图表的格式一致
-
-    # 2. 利润率图（修复索引方式，用iloc避免警告）
-    profit_data = profit_df[profit_df["Year"] == selected_year].iloc[0]  # 关键修复：用iloc[0]替代[0]
-    profit_fig = go.Figure()
-    profit_fig.add_trace(go.Bar(
+        rev_fig.update_yaxes(tickprefix="$", tickformat=",")
+    
+    # 2. 利润率图
+    profit_data = profit_df[profit_df["Year"] == selected_year].iloc[0]
+    profit_fig = go.Figure(go.Bar(
         x=[selected_year], y=[profit_data["Profit $"]],
         name="Profit ($)", marker_color="green"
     ))
     profit_fig.update_layout(
-        title=f"Profit Margin ({selected_year})",
+        title=f"Profit ({selected_year}): ${profit_data['Profit $']:,}",
         yaxis=dict(tickprefix="$", tickformat=","),
         template="plotly_white"
     )
-
-    # 3. 收入分布饼图（修复数据提取逻辑）
-    rev_dist_data = revenue_df[revenue_df["Year"] == selected_year].iloc[0]  # 修复索引
+    
+    # 3. 收入分布饼图
+    rev_dist_data = revenue_df[revenue_df["Year"] == selected_year].iloc[0]
     if selected_bu == "All":
         dist_labels = ["Business 1", "Business 2", "Business 3"]
         dist_values = [rev_dist_data["Business 1"], rev_dist_data["Business 2"], rev_dist_data["Business 3"]]
@@ -120,20 +134,20 @@ def update_charts(selected_year, selected_bu):
         title=f"Revenue Distribution ({selected_year})",
         hole=0.3, template="plotly_white"
     )
-
-    # 4. 费用分析图（保持与原始版本的图表类型一致）
-    exp_data = expenses_df[expenses_df["Year"] == selected_year].iloc[0]  # 修复索引
+    
+    # 4. 费用分析图
+    exp_data = expenses_df[expenses_df["Year"] == selected_year].iloc[0]
     exp_fig = px.bar(
         x=["Salaries", "Rent", "D&A", "Interest"],
         y=[exp_data["Salaries"], exp_data["Rent"], exp_data["D&A"], exp_data["Interest"]],
-        title=f"Expenses Breakdown ({selected_year})",
-        labels={"y": "Amount ($)", "x": "Expense Type"},
+        title=f"Expenses ({selected_year})",
+        labels={"y": "Amount ($)", "x": "Type"},
         template="plotly_white"
     )
     exp_fig.update_yaxes(tickprefix="$", tickformat=",")
-
-    # 5. 预算vs实际（修复数据匹配逻辑）
-    budget_data = budget_df[budget_df["Year"] == selected_year].iloc[0]  # 修复索引
+    
+    # 5. 预算vs实际
+    budget_data = budget_df[budget_df["Year"] == selected_year].iloc[0]
     actual_data = {
         "Revenue": revenue_df[revenue_df["Year"] == selected_year]["Consolidated"].iloc[0],
         "COGS": cogs_df[cogs_df["Year"] == selected_year]["COGS"].iloc[0],
@@ -142,33 +156,34 @@ def update_charts(selected_year, selected_bu):
     budget_fig = go.Figure()
     budget_fig.add_trace(go.Bar(x=["Revenue", "COGS", "Expenses"], y=[budget_data["Revenue"], budget_data["COGS"], budget_data["Expenses"]], name="Budget"))
     budget_fig.add_trace(go.Bar(x=["Revenue", "COGS", "Expenses"], y=[actual_data["Revenue"], actual_data["COGS"], actual_data["Expenses"]], name="Actual"))
-    budget_fig.update_layout(barmode="group", template="plotly_white", title=f"Budget vs Actual ({selected_year})")
+    budget_fig.update_layout(barmode="group", title=f"Budget vs Actual ({selected_year})", template="plotly_white")
     budget_fig.update_yaxes(tickprefix="$", tickformat=",")
-
-    # 6. CAGR雷达图（彻底修复核心错误：不依赖数据框列名，直接传值）
+    
+    # 6. CAGR雷达图
     start_year = revenue_df["Year"].min()
     end_year = revenue_df["Year"].max()
     years = end_year - start_year
     cagr_list = []
     labels = []
     for bu in ["Business 1", "Business 2", "Business 3"]:
-        if selected_bu == "All" or bu == selected_bu:
-            start_val = revenue_df[revenue_df["Year"] == start_year][bu].iloc[0]  # 修复索引
+        if (selected_bu == "All" or bu == selected_bu) and bu in revenue_df.columns:
+            start_val = revenue_df[revenue_df["Year"] == start_year][bu].iloc[0]
             end_val = revenue_df[revenue_df["Year"] == end_year][bu].iloc[0]
-            cagr = ((end_val / start_val) ** (1/years) - 1) * 100  # 计算为百分比
-            cagr_list.append(cagr)
-            labels.append(bu)
-    # 生成雷达图（直接用列表传参，避免列名错误）
+            if start_val > 0:  # 避免除以0
+                cagr = ((end_val / start_val) ** (1/years) - 1) * 100
+                cagr_list.append(round(cagr, 2))
+                labels.append(bu)
     radar_fig = px.line_polar(
         r=cagr_list, theta=labels, line_close=True,
-        title=f"CAGR ({start_year}-{end_year})",
+        title=f"CAGR ({start_year}-{end_year}) (%)",
         template="plotly_white"
     )
     radar_fig.update_polars(radialaxis_title="CAGR (%)")
-
-    # 确保返回值格式与原始版本一致（6个图表对象的列表）
+    
     return rev_fig, profit_fig, dist_fig, exp_fig, budget_fig, radar_fig
 
-# ---------------------- 运行入口（与你原始版本一致，确保WSGI能正确调用） ----------------------
+# ---------------------- 运行入口（根据环境选择） ----------------------
 if __name__ == "__main__":
-    app.run_server(debug=False)  # 关闭debug，与生产环境一致
+    # Colab测试用：app.run(debug=False)
+    # PythonAnywhere部署用：app.run_server(debug=False)
+    app.run_server(debug=False)
