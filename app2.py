@@ -1,17 +1,14 @@
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output, State, callback, no_update
+from dash import Dash, dcc, html, Input, Output
 import numpy as np
-import base64
-import io
 
 # ---------------------- 初始化Dash应用 ----------------------
-app = Dash(__name__, suppress_callback_exceptions=True)
+app = Dash(__name__)
 server = app.server  # 暴露Flask服务
 
 # ---------------------- 读取示例数据 ----------------------
-# （保持原数据读取逻辑，用于默认展示）
 revenue_df = pd.read_csv("revenue_df.csv")
 cogs_df = pd.read_csv("cogs_df.csv")
 profit_df = pd.read_csv("profit_df.csv")
@@ -19,256 +16,240 @@ expenses_df = pd.read_csv("expenses_df.csv")
 budget_df = pd.read_csv("budget_df.csv")
 balance_sheet_df = pd.read_csv("balance_sheet_df.csv")
 
-# ---------------------- 通用图表函数（支持动态数据输入） ----------------------
-def business_unit_revenue_fig(data):
-    """1. 业务单元收入（堆叠面积图）"""
-    fig = px.area(
-        data, x="Year", y=["Business 1", "Business 2", "Business 3"],
-        title="Business Unit Revenue Trend",
-        labels={"value": "Revenue ($)", "variable": "Business Unit"},
-        hover_data={"value": ":,.0f"},
-        color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c"]
-    )
-    fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
-    return fig
+# ---------------------- 应用布局（包含交互筛选器+仪表盘） ----------------------
+app.layout = html.Div([
+    # 标题+说明
+    html.H1("Financial Analytics Dashboard", style={"textAlign": "center", "margin": "20px 0"}),
+    html.P(
+        "Use the filters below to customize your view of the financial data:",
+        style={"textAlign": "center", "fontSize": 16, "marginBottom": "20px"}
+    ),
 
-def profit_margin_fig(data):
-    """2. 利润率（双y轴图：柱状图+线图）"""
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
-        x=data["Year"], y=data["Profit $"], name="Profit ($)",
+    # 交互筛选器（用户友好核心）
+    html.Div([
+        # 年份范围筛选
+        html.Div([
+            html.Label("Select Year Range:"),
+            dcc.Dropdown(
+                id="year-filter",
+                options=[{"label": y, "value": y} for y in revenue_df["Year"]],
+                value=revenue_df["Year"].tolist(),  # 默认选所有年份
+                multi=True,
+                style={"width": "250px"}
+            )
+        ], style={"display": "inline-block", "marginRight": "30px"}),
+
+        # 业务单元筛选
+        html.Div([
+            html.Label("Select Business Unit:"),
+            dcc.Dropdown(
+                id="bu-filter",
+                options=[
+                    {"label": "All Units", "value": "all"},
+                    {"label": "Business 1", "value": "Business 1"},
+                    {"label": "Business 2", "value": "Business 2"},
+                    {"label": "Business 3", "value": "Business 3"}
+                ],
+                value="all",
+                style={"width": "200px"}
+            )
+        ], style={"display": "inline-block"})
+    ], style={"textAlign": "center", "marginBottom": "30px", "padding": "10px", "background": "#f5f5f5", "borderRadius": "5px"}),
+
+    # 仪表盘图表区域
+    html.Div([
+        # 第一行
+        html.Div([
+            html.Div([dcc.Graph(id="revenue-trend")], style={"width": "50%", "display": "inline-block"}),
+            html.Div([dcc.Graph(id="profit-margin")], style={"width": "50%", "display": "inline-block"})
+        ], style={"marginBottom": "30px"}),
+
+        # 第二行
+        html.Div([
+            html.Div([dcc.Graph(id="revenue-dist")], style={"width": "50%", "display": "inline-block"}),
+            html.Div([dcc.Graph(id="expenses-trend")], style={"width": "50%", "display": "inline-block"})
+        ], style={"marginBottom": "30px"}),
+
+        # 第三行
+        html.Div([
+            html.Div([dcc.Graph(id="budget-vs-actual")], style={"width": "50%", "display": "inline-block"}),
+            html.Div([dcc.Graph(id="balance-sheet")], style={"width": "50%", "display": "inline-block"})
+        ], style={"marginBottom": "30px"}),
+
+        # 第四行
+        html.Div([
+            html.Div([dcc.Graph(id="cagr-radar")], style={"width": "50%", "display": "inline-block"}),
+            html.Div([dcc.Graph(id="cost-structure")], style={"width": "50%", "display": "inline-block"})
+        ])
+    ], style={"padding": "20px"})
+])
+
+# ---------------------- 回调函数：根据筛选器更新图表 ----------------------
+@callback(
+    [Output("revenue-trend", "figure"),
+     Output("profit-margin", "figure"),
+     Output("revenue-dist", "figure"),
+     Output("expenses-trend", "figure"),
+     Output("budget-vs-actual", "figure"),
+     Output("balance-sheet", "figure"),
+     Output("cagr-radar", "figure"),
+     Output("cost-structure", "figure")],
+    [Input("year-filter", "value"),
+     Input("bu-filter", "value")]
+)
+def update_dashboard(selected_years, selected_bu):
+    # 筛选年份
+    filtered_rev = revenue_df[revenue_df["Year"].isin(selected_years)]
+    filtered_profit = profit_df[profit_df["Year"].isin(selected_years)]
+    filtered_exp = expenses_df[expenses_df["Year"].isin(selected_years)]
+    filtered_cogs = cogs_df[cogs_df["Year"].isin(selected_years)]
+
+    # 1. 收入趋势图（按业务单元筛选）
+    if selected_bu != "all":
+        rev_fig = px.line(
+            filtered_rev, x="Year", y=selected_bu,
+            title=f"{selected_bu} Revenue Trend",
+            labels={"value": "Revenue ($)"},
+            hover_data={"value": ":,.0f"},
+            color_discrete_sequence=["#1f77b4"]
+        )
+    else:
+        rev_fig = px.area(
+            filtered_rev, x="Year", y=["Business 1", "Business 2", "Business 3"],
+            title="All Business Units Revenue Trend",
+            labels={"value": "Revenue ($)", "variable": "Business Unit"},
+            hover_data={"value": ":,.0f"},
+            color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c"]
+        )
+    rev_fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
+
+    # 2. 利润率图
+    profit_fig = go.Figure()
+    profit_fig.add_trace(go.Bar(
+        x=filtered_profit["Year"], y=filtered_profit["Profit $"], name="Profit ($)",
         hovertemplate="Year: %{x}<br>Profit: $%{y:,.0f}",
         marker_color="#2ca02c"
     ))
-    fig.add_trace(go.Scatter(
-        x=data["Year"], y=data["Profit %"], name="Profit (%)",
+    profit_fig.add_trace(go.Scatter(
+        x=filtered_profit["Year"], y=filtered_profit["Profit %"], name="Profit (%)",
         mode="lines+markers", line=dict(color="#ff7f0e", width=3),
         yaxis="y2", hovertemplate="Year: %{x}<br>Profit %: %{y}%"
     ))
-    fig.update_layout(
+    profit_fig.update_layout(
         title="Profit Margin Analysis",
         yaxis=dict(title="Profit ($)", tickformat="$,.0f"),
         yaxis2=dict(title="Profit (%)", overlaying="y", side="right"),
         template="plotly_white", hovermode="x unified", height=400
     )
-    return fig
 
-def cumulative_revenue_fig(data):
-    """3. 累计收入（饼图替换柱状图）"""
-    temp_df = pd.DataFrame({
-        "Business": ["Business 1", "Business 2", "Business 3", "Consolidated"],
-        "Revenue": [
-            data["Business 1"].iloc[-1],
-            data["Business 2"].iloc[-1],
-            data["Business 3"].iloc[-1],
-            data["Consolidated"].iloc[-1]
-        ]
-    })
-    # 饼图：更适合展示占比关系
-    fig = px.pie(
-        temp_df, values="Revenue", names="Business",
-        title="Cumulative Revenue Distribution (Latest Year)",
-        hole=0.3,  # 环形图效果
-        hover_data={"Revenue": ":,.0f"},
-        color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c", "#000066"]
-    )
-    fig.update_traces(textinfo="percent+label")  # 显示百分比和标签
-    fig.update_layout(template="plotly_white", height=400)
-    return fig
+    # 3. 收入分布饼图（最新年份）
+    latest_year = filtered_rev["Year"].iloc[-1] if not filtered_rev.empty else revenue_df["Year"].iloc[-1]
+    rev_latest = revenue_df[revenue_df["Year"] == latest_year]
+    if selected_bu != "all":
+        rev_dist_fig = px.pie(
+            names=[selected_bu], values=[rev_latest[selected_bu].iloc[0]],
+            title=f"{selected_bu} Revenue (Year: {latest_year})",
+            hole=0.3,
+            hover_data={"values": ":,.0f"},
+            color_discrete_sequence=["#1f77b4"]
+        )
+    else:
+        rev_dist_fig = px.pie(
+            names=["Business 1", "Business 2", "Business 3"],
+            values=[rev_latest["Business 1"].iloc[0], rev_latest["Business 2"].iloc[0], rev_latest["Business 3"].iloc[0]],
+            title=f"Revenue Distribution (Year: {latest_year})",
+            hole=0.3,
+            hover_data={"values": ":,.0f"},
+            color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c"]
+        )
+    rev_dist_fig.update_traces(textinfo="percent+label")
+    rev_dist_fig.update_layout(template="plotly_white", height=400)
 
-def expenses_trend_fig(data):
-    """4. 费用趋势（堆叠面积图）"""
-    fig = px.area(
-        data, x="Year", y=["Salaries", "Rent", "D&A", "Interest"],
+    # 4. 费用趋势图
+    exp_fig = px.area(
+        filtered_exp, x="Year", y=["Salaries", "Rent", "D&A", "Interest"],
         title="Expenses Trend Over Time",
         labels={"value": "Expense ($)", "variable": "Expense Type"},
         hover_data={"value": ":,.0f"},
         color_discrete_sequence=["#d62728", "#9467bd", "#8c564b", "#e377c2"]
     )
-    fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
-    return fig
+    exp_fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
 
-def budget_vs_actual_fig(budget_data, actual_rev, actual_cogs, actual_exp, actual_profit):
-    """5. 预算vs实际（保留分组柱状图，适合对比）"""
-    labels = ["Revenue", "COGS", "Expenses", "Profit"]
+    # 5. 预算vs实际
+    budget_fig = go.Figure()
     budget_vals = [
-        budget_data.loc[budget_data["Category"]=="Revenue", "Value"].iloc[0],
-        budget_data.loc[budget_data["Category"]=="COGS", "Value"].iloc[0],
-        budget_data.loc[budget_data["Category"]=="Expenses", "Value"].iloc[0],
-        budget_data.loc[budget_data["Category"]=="Profit ($)", "Value"].iloc[0]
+        budget_df.loc[budget_df["Category"]=="Revenue", "Value"].iloc[0],
+        budget_df.loc[budget_df["Category"]=="COGS", "Value"].iloc[0],
+        budget_df.loc[budget_df["Category"]=="Expenses", "Value"].iloc[0],
+        budget_df.loc[budget_df["Category"]=="Profit ($)", "Value"].iloc[0]
     ]
     actual_vals = [
-        actual_rev, actual_cogs, actual_exp, actual_profit
+        revenue_df["Consolidated"].iloc[-1],
+        cogs_df["COGS"].iloc[-1],
+        expenses_df["Total"].iloc[-1],
+        profit_df["Profit $"].iloc[-1]
     ]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=labels, y=budget_vals, name="Budget", marker_color="#9467bd"))
-    fig.add_trace(go.Bar(x=labels, y=actual_vals, name="Actual", marker_color="#1f77b4"))
-    fig.update_layout(
-        title="Budget vs Actual Comparison",
+    budget_fig.add_trace(go.Bar(x=["Revenue", "COGS", "Expenses", "Profit"], y=budget_vals, name="Budget", marker_color="#9467bd"))
+    budget_fig.add_trace(go.Bar(x=["Revenue", "COGS", "Expenses", "Profit"], y=actual_vals, name="Actual", marker_color="#1f77b4"))
+    budget_fig.update_layout(
+        title="Budget vs Actual (Latest Year)",
         barmode="group",
         yaxis=dict(title="Amount ($)", tickformat="$,.0f"),
-        template="plotly_white",
-        hovermode="x unified",
-        height=400
+        template="plotly_white", hovermode="x unified", height=400
     )
-    return fig
 
-def balance_sheet_fig(data):
-    """6. 资产负债表（环形图替换柱状图）"""
-    # 扩展数据：包含资产、负债和权益
-    temp_df = pd.DataFrame({
-        "Category": data["Category"],
-        "Value": data["Value"]
-    })
-    # 环形图：适合展示整体结构
-    fig = px.pie(
-        temp_df, values="Value", names="Category",
+    # 6. 资产负债表环形图
+    bs_fig = px.pie(
+        balance_sheet_df, values="Value", names="Category",
         title="Balance Sheet Structure (Latest Year)",
         hole=0.4,
         hover_data={"Value": ":,.0f"},
         color_discrete_sequence=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
     )
-    fig.update_traces(textinfo="label+percent")
-    fig.update_layout(template="plotly_white", height=400)
-    return fig
+    bs_fig.update_traces(textinfo="label+percent")
+    bs_fig.update_layout(template="plotly_white", height=400)
 
-def cagr_fig(data):
-    """7. 业务单元CAGR（雷达图替换柱状图）"""
-    rev = data[["Business 1", "Business 2", "Business 3"]]
-    cagr = (rev.iloc[-1] / rev.iloc[0]) ** (1/4) - 1  # 4年CAGR
-    # 雷达图数据格式
-    radar_data = pd.DataFrame({
-        "Metric": ["CAGR (%)"],
-        "Business 1": [cagr[0]*100],
-        "Business 2": [cagr[1]*100],
-        "Business 3": [cagr[2]*100]
-    })
-    fig = px.line_polar(
-        radar_data, r="CAGR (%)", theta=["Business 1", "Business 2", "Business 3"],
-        line_close=True, title="5-Year CAGR by Business Unit",
-        color_discrete_sequence=["#2ca02c"]
-    )
-    fig.update_layout(
+    # 7. CAGR雷达图
+    rev = revenue_df[["Business 1", "Business 2", "Business 3"]]
+    cagr = (rev.iloc[-1] / rev.iloc[0]) ** (1/4) - 1
+    if selected_bu != "all":
+        radar_fig = px.line_polar(
+            r=[cagr[selected_bu]*100], theta=[selected_bu],
+            title=f"{selected_bu} 5-Year CAGR",
+            line_close=True,
+            color_discrete_sequence=["#2ca02c"]
+        )
+    else:
+        radar_fig = px.line_polar(
+            r=[cagr["Business 1"]*100, cagr["Business 2"]*100, cagr["Business 3"]*100],
+            theta=["Business 1", "Business 2", "Business 3"],
+            title="5-Year CAGR by Business Unit",
+            line_close=True,
+            color_discrete_sequence=["#2ca02c"]
+        )
+    radar_fig.update_layout(
         polar=dict(radialaxis=dict(visible=True, title="CAGR (%)")),
         template="plotly_white", height=400
     )
-    return fig
 
-def cost_structure_pct_fig(rev_data, cogs_data, exp_data):
-    """8. 成本占收入比例（线图保留，适合趋势）"""
+    # 8. 成本结构线图
     cost_pct = pd.DataFrame({
-        "Year": rev_data["Year"],
-        "COGS %": cogs_data["COGS"] / rev_data["Consolidated"] * 100,
-        "Salaries %": exp_data["Salaries"] / rev_data["Consolidated"] * 100,
-        "Rent %": exp_data["Rent"] / rev_data["Consolidated"] * 100,
+        "Year": filtered_rev["Year"],
+        "COGS %": filtered_cogs["COGS"] / filtered_rev["Consolidated"] * 100,
+        "Salaries %": filtered_exp["Salaries"] / filtered_rev["Consolidated"] * 100,
+        "Rent %": filtered_exp["Rent"] / filtered_rev["Consolidated"] * 100,
     })
-    fig = px.line(
+    cost_fig = px.line(
         cost_pct, x="Year", y=["COGS %", "Salaries %", "Rent %"],
         title="Cost Structure as % of Revenue",
         labels={"value": "% of Revenue", "variable": "Cost Type"},
         hover_data={"value": ":,.1f"},
         markers=True
     )
-    fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
-    return fig
+    cost_fig.update_layout(hovermode="x unified", template="plotly_white", height=400)
 
-# ---------------------- 应用布局 ----------------------
-app.layout = html.Div([
-    # 标题和说明
-    html.Div([
-        html.H1("Financial Analytics Dashboard", style={"textAlign": "center", "margin": "20px 0"}),
-        html.P(
-            "Upload your company's financial data (CSV files) to generate customized analytics. "
-            "Use the tabs below to switch between sample data and your uploaded data.",
-            style={"textAlign": "center", "fontSize": 16, "marginBottom": "30px", "maxWidth": "800px", "margin": "0 auto"}
-        )
-    ]),
+    return rev_fig, profit_fig, rev_dist_fig, exp_fig, budget_fig, bs_fig, radar_fig, cost_fig
 
-    # 文件上传区域
-    html.Div([
-        html.H3("Upload Your Financial Data", style={"textAlign": "center", "margin": "20px 0"}),
-        dcc.Upload(
-            id="upload-data",
-            children=html.Div([
-                "Drag and drop or click to select CSV files. Required files: ",
-                html.Strong("revenue, cogs, profit, expenses, budget, balance_sheet")
-            ]),
-            style={
-                "width": "80%",
-                "height": "100px",
-                "lineHeight": "100px",
-                "borderWidth": "2px",
-                "borderStyle": "dashed",
-                "borderRadius": "5px",
-                "textAlign": "center",
-                "margin": "0 auto 30px auto",
-                "padding": "10px"
-            },
-            multiple=True  # 允许同时上传多个文件
-        ),
-        html.P(
-            "Data format guide: Each CSV should have columns matching the sample data. "
-            "Year columns must include 'Year -4' to 'Year 0'.",
-            style={"textAlign": "center", "fontSize": 14, "color": "#666", "marginBottom": "30px"}
-        ),
-        html.Div(id="upload-status", style={"textAlign": "center", "marginBottom": "20px"})
-    ]),
-
-    # 标签页：切换示例数据和用户数据
-    dcc.Tabs(id="data-tabs", value="sample-tab", children=[
-        dcc.Tab(label="Sample Data Dashboard", value="sample-tab"),
-        dcc.Tab(label="Your Uploaded Data", value="user-tab")
-    ]),
-
-    # 图表内容区域
-    html.Div(id="dashboard-content", style={"padding": "20px"})
-])
-
-# ---------------------- 回调函数：处理文件上传 ----------------------
-@callback(
-    Output("upload-status", "children"),
-    Output("dashboard-content", "children"),
-    Input("upload-data", "contents"),
-    Input("data-tabs", "value"),
-    State("upload-data", "filename"),
-    prevent_initial_call=True
-)
-def update_dashboard(contents, active_tab, filenames):
-    # 1. 示例数据标签页
-    if active_tab == "sample-tab":
-        return (
-            "Viewing sample data. Upload your files and switch to 'Your Uploaded Data' tab to use your data.",
-            html.Div([
-                # 第一行
-                html.Div([
-                    html.Div([dcc.Graph(figure=business_unit_revenue_fig(revenue_df))], style={"width": "50%", "display": "inline-block"}),
-                    html.Div([dcc.Graph(figure=profit_margin_fig(profit_df))], style={"width": "50%", "display": "inline-block"})
-                ], style={"marginBottom": "30px"}),
-                # 第二行
-                html.Div([
-                    html.Div([dcc.Graph(figure=cumulative_revenue_fig(revenue_df))], style={"width": "50%", "display": "inline-block"}),
-                    html.Div([dcc.Graph(figure=expenses_trend_fig(expenses_df))], style={"width": "50%", "display": "inline-block"})
-                ], style={"marginBottom": "30px"}),
-                # 第三行
-                html.Div([
-                    html.Div([dcc.Graph(
-                        figure=budget_vs_actual_fig(
-                            budget_df,
-                            revenue_df["Consolidated"].iloc[-1],
-                            cogs_df["COGS"].iloc[-1],
-                            expenses_df["Total"].iloc[-1],
-                            profit_df["Profit $"].iloc[-1]
-                        ))], style={"width": "50%", "display": "inline-block"}),
-                    html.Div([dcc.Graph(figure=balance_sheet_fig(balance_sheet_df))], style={"width": "50%", "display": "inline-block"})
-                ], style={"marginBottom": "30px"}),
-                # 第四行
-                html.Div([
-                    html.Div([dcc.Graph(figure=cagr_fig(revenue_df))], style={"width": "50%", "display": "inline-block"}),
-                    html.Div([dcc.Graph(
-                        figure=cost_structure_pct_fig(revenue_df, cogs_df, expenses_df))], 
-                        style={"width": "50%", "display": "inline-block"})
-                ])
-            ])
-        )
-    
-    #
+# ---------------------- 运行入口 ----------------------
+if __name__ == "__main__":
+    app.run(debug=False)
